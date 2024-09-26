@@ -30,9 +30,7 @@ var EncodeList = []EncodeListItem{
 	},
 }
 
-var NoRoute = func(ctx *gin.Context) {
-	ctx.Writer.WriteString("404 page not found")
-}
+var NoRoute gin.HandlerFunc = nil
 
 func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
 	if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
@@ -69,6 +67,7 @@ func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) 
 
 		s, err := f.Stat()
 		if err != nil || s.IsDir() {
+			f.Close()
 			continue
 		}
 
@@ -128,18 +127,19 @@ func StaticFS(group gin.IRoutes, relativePath string, fs http.FileSystem) gin.IR
 	}
 	handler := func(ctx *gin.Context) {
 		name := ctx.Param("filepath")
-		if tryCompress(ctx, name, fs) {
+		if !tryCompress(ctx, name, fs) {
+			return
+		}
+		if NoRoute != nil {
 			f, err := fs.Open(name)
 			if err != nil {
 				ctx.Status(404)
-				if NoRoute != nil {
-					NoRoute(ctx)
-				}
+				NoRoute(ctx)
 				return
 			}
 			f.Close()
-			ctx.FileFromFS(name, fs)
 		}
+		ctx.FileFromFS(name, fs)
 	}
 	urlPattern := path.Join(relativePath, "/*filepath")
 

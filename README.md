@@ -95,13 +95,26 @@ gzipstatic.EncodeList = []gzipstatic.EncodeListItem{
 
 ## Response Header Characteristics
 
-X-Content-Encoding-By: gzipstatic-gin
+X-Content-Encoding-By：gzipstatic-gin
 
 ---
 
 ## Source Code
 
 [gzipstatic.go](gzipstatic.go)
+
+---
+
+## Reference
+
+https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Encoding  
+https://developer.mozilla.org/docs/Web/HTTP/Headers/Accept-Encoding  
+https://developer.mozilla.org/docs/Web/HTTP/Headers/Vary  
+https://github.com/gin-gonic/gin  
+https://github.com/BCSPanel/BCSPanel/blob/main/src/httprouter/init.go  
+https://github.com/lpar/gzipped  
+https://github.com/nanmu42/gzip  
+https://github.com/vbenjs/vite-plugin-compression
 
 ---
 

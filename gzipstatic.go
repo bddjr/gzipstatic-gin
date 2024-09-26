@@ -20,7 +20,7 @@ type EncodeListItem struct {
 }
 
 // Priority from high to low
-var EncodeList = []EncodeListItem{
+var EncodeList = []*EncodeListItem{
 	{
 		name: "br",
 		ext:  ".br",

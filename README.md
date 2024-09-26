@@ -80,7 +80,7 @@ gzipstatic.ExtFillter = regexp.MustCompile(`\.(html|htm|js|json|css)$`)
 
 ```go
 // Priority from high to low
-gzipstatic.EncodeList = []gzipstatic.EncodeListItem{
+gzipstatic.EncodeList = []*gzipstatic.EncodeListItem{
     {
         name: "br",
         ext:  ".br",

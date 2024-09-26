@@ -1,3 +1,4 @@
+// https://github.com/bddjr/gzipstatic-gin
 package gzipstatic
 
 import (
@@ -18,14 +19,14 @@ type EncodeListItem struct {
 	ext  string
 }
 
-// Priority from low to high
+// Priority from high to low
 var EncodeList = []EncodeListItem{
 	{
-		name: "gzip",
-		ext:  ".gz",
-	}, {
 		name: "br",
 		ext:  ".br",
+	}, {
+		name: "gzip",
+		ext:  ".gz",
 	},
 }
 
@@ -33,7 +34,7 @@ var NoRoute = func(ctx *gin.Context) {
 	ctx.Writer.WriteString("404 page not found")
 }
 
-func fileFromFS(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
+func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
 	if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
 		ctx.Header("Location", "../")
 		ctx.Status(301)
@@ -49,23 +50,18 @@ func fileFromFS(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
 		return true
 	}
 
-	// Select encoding based on priority
-	n := -1
-	for _, name := range strings.Split(ctx.GetHeader("Accept-Encoding"), ", ") {
-		name, _, _ = strings.Cut(name, ";")
-		for i := n + 1; i < len(EncodeList); i++ {
-			if name == EncodeList[i].name {
-				n = i
-			}
-		}
-		if n == len(EncodeList)-1 {
-			break
-		}
+	ae := map[string]bool{}
+	for _, encodeName := range strings.Split(ctx.GetHeader("Accept-Encoding"), ", ") {
+		encodeName, _, _ = strings.Cut(encodeName, ";")
+		ae[encodeName] = true
 	}
 
-	// try
-	for ; n > -1; n-- {
-		f, err := fs.Open(name + EncodeList[n].ext)
+	for _, encode := range EncodeList {
+		if _, b := ae[encode.name]; !b {
+			continue
+		}
+
+		f, err := fs.Open(name + encode.ext)
 		if err != nil {
 			continue
 		}
@@ -80,7 +76,7 @@ func fileFromFS(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
 		h.Del("Content-Length")
 		h.Add("Vary", "Accept-Encoding")
 		h.Set("X-Content-Encoding-By", "gzipstatic-gin")
-		h.Set("Content-Encoding", EncodeList[n].name)
+		h.Set("Content-Encoding", encode.name)
 		h.Set("Content-Type", mime.TypeByExtension(ext))
 
 		http.ServeContent(ctx.Writer, ctx.Request, name, s.ModTime(), f)
@@ -91,13 +87,13 @@ func fileFromFS(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
 
 func File(ctx *gin.Context, FilePath string) {
 	dir, name := filepath.Split(FilePath)
-	if fileFromFS(ctx, name, http.Dir(dir)) {
+	if tryCompress(ctx, name, http.Dir(dir)) {
 		ctx.File(FilePath)
 	}
 }
 
 func FileFromFS(ctx *gin.Context, name string, fs http.FileSystem) {
-	if fileFromFS(ctx, name, fs) {
+	if tryCompress(ctx, name, fs) {
 		ctx.FileFromFS(name, fs)
 	}
 }
@@ -132,7 +128,7 @@ func StaticFS(group gin.IRoutes, relativePath string, fs http.FileSystem) gin.IR
 	}
 	handler := func(ctx *gin.Context) {
 		name := ctx.Param("filepath")
-		if fileFromFS(ctx, name, fs) {
+		if tryCompress(ctx, name, fs) {
 			f, err := fs.Open(name)
 			if err != nil {
 				ctx.Status(404)

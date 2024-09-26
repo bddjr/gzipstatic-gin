@@ -48,14 +48,10 @@ func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) 
 		return true
 	}
 
-	ae := map[string]bool{}
-	for _, encodeName := range strings.Split(ctx.GetHeader("Accept-Encoding"), ", ") {
-		encodeName, _, _ = strings.Cut(encodeName, ";")
-		ae[encodeName] = true
-	}
+	ae := ctx.GetHeader("Accept-Encoding")
 
 	for _, encode := range EncodeList {
-		if _, b := ae[encode.name]; !b {
+		if !strings.Contains(ae, encode.name) {
 			continue
 		}
 

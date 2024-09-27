@@ -91,11 +91,12 @@ gzipstatic.EncodeList = []*gzipstatic.EncodeListItem{
 }
 ```
 
----
+### EnableDebugHeader
 
-## Response Header Characteristics
-
-X-Content-Encoding-By：gzipstatic-gin
+```go
+// Encoding-By: gzipstatic-gin
+gzipstatic.EnableDebugHeader = true
+```
 
 ---
 

@@ -32,7 +32,15 @@ var EncodeList = []*EncodeListItem{
 
 var NoRoute gin.HandlerFunc = nil
 
+// Encoding-By: gzipstatic-gin
+var EnableDebugHeader = true
+
 func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
+	ae := ctx.GetHeader("Accept-Encoding")
+	if ae == "" {
+		return true
+	}
+
 	if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
 		ctx.Header("Location", "../")
 		ctx.Status(301)
@@ -47,8 +55,6 @@ func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) 
 	if ext == "" {
 		return true
 	}
-
-	ae := ctx.GetHeader("Accept-Encoding")
 
 	for _, encode := range EncodeList {
 		if !strings.Contains(ae, encode.name) {
@@ -69,10 +75,12 @@ func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) 
 
 		h := ctx.Writer.Header()
 		h.Del("Content-Length")
-		h.Add("Vary", "Accept-Encoding")
-		h.Set("X-Content-Encoding-By", "gzipstatic-gin")
 		h.Set("Content-Encoding", encode.name)
 		h.Set("Content-Type", mime.TypeByExtension(ext))
+		h.Add("Vary", "Accept-Encoding")
+		if EnableDebugHeader {
+			h.Add("Encoding-By", "gzipstatic-gin")
+		}
 
 		http.ServeContent(ctx.Writer, ctx.Request, name, s.ModTime(), f)
 		return false

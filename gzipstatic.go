@@ -42,7 +42,7 @@ func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) 
 	}
 
 	if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
-		ctx.Header("Location", "../")
+		ctx.Header("Location", "./")
 		ctx.Status(301)
 		return false
 	}

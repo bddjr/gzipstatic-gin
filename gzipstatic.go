@@ -28,11 +28,6 @@ var ExtFilterMap = map[string]struct{}{
 	".xml":  {},
 }
 
-type EncodeType struct {
-	name string
-	ext  string
-}
-
 var EncodeNameExtMap = map[string]string{
 	"br":   ".br",
 	"zstd": ".zst",

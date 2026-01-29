@@ -2,101 +2,163 @@
 package gzipstatic
 
 import (
-	"mime"
 	"net/http"
 	"path"
 	"path/filepath"
-	"regexp"
+	"reflect"
 	"strings"
+	"time"
+	"unsafe"
 
 	"github.com/gin-gonic/gin"
 )
 
-var ExtFillter = regexp.MustCompile(`\.(html|htm|js|json|css)$`)
+// X-Encoding-By: gzipstatic-gin
+var EnableDebugHeader = true
 
-type EncodeListItem struct {
+var ExtFilterMap = map[string]struct{}{
+	".css":  {},
+	".htm":  {},
+	".html": {},
+	".js":   {},
+	".json": {},
+	".mjs":  {},
+	".svg":  {},
+	".wasm": {},
+	".xml":  {},
+}
+
+type EncodeType struct {
 	name string
 	ext  string
 }
 
-// Priority from high to low
-var EncodeList = []*EncodeListItem{
-	{
-		name: "br",
-		ext:  ".br",
-	}, {
-		name: "gzip",
-		ext:  ".gz",
-	},
+var EncodeNameExtMap = map[string]string{
+	"br":   ".br",
+	"zstd": ".zst",
+	"gzip": ".gz",
 }
 
-var NoRoute gin.HandlerFunc = nil
-
-// Encoding-By: gzipstatic-gin
-var EnableDebugHeader = true
-
-func tryCompress(ctx *gin.Context, name string, fs http.FileSystem) (next bool) {
-	ae := ctx.GetHeader("Accept-Encoding")
-	if ae == "" {
-		return true
+func getEngineElem(group gin.IRoutes) (reflect.Value, bool) {
+	if group != nil {
+		if engine, ok := group.(*gin.Engine); ok {
+			return reflect.ValueOf(engine).Elem(), true
+		}
+		if rg, ok := group.(*gin.RouterGroup); ok {
+			return reflect.ValueOf(rg).Elem().FieldByName("engine").Elem(), true
+		}
 	}
+	return reflect.Value{}, false
+}
 
-	if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
-		ctx.Header("Location", "./")
-		ctx.Status(301)
+// returns ok?
+func serveFile(ctx *gin.Context, filePath string, fs http.FileSystem) bool {
+	headerAcceptEncoding := ctx.GetHeader("Accept-Encoding")
+	if headerAcceptEncoding == "" {
 		return false
 	}
 
-	if name == "" || strings.HasSuffix(name, "/") {
-		name += "index.html"
+	// if strings.HasSuffix(ctx.Request.URL.Path, "/index.html") {
+	// 	ctx.Header("Location", "./")
+	// 	ctx.Status(301)
+	// 	return true
+	// }
+
+	if filePath == "" || strings.HasSuffix(filePath, "/") {
+		filePath += "index.html"
 	}
 
-	ext := ExtFillter.FindString(name)
-	if ext == "" {
-		return true
+	ext := strings.ToLower(filepath.Ext(filePath))
+	if _, ok := ExtFilterMap[ext]; !ok {
+		return false
 	}
 
-	for _, encode := range EncodeList {
-		if !strings.Contains(ae, encode.name) {
+	var file http.File
+	defer func() {
+		if file != nil {
+			file.Close()
+		}
+	}()
+
+	var minSize int64 = -1
+	var minSizeFileModTime time.Time
+	minSizeFileEncodeName := ""
+
+	if f, err := fs.Open(filePath); err == nil {
+		s, err := f.Stat()
+		if err != nil || s.IsDir() {
+			f.Close()
+		} else {
+			file = f
+			minSize = s.Size()
+			minSizeFileModTime = s.ModTime()
+		}
+	}
+
+	for encodeName := range strings.SplitSeq(headerAcceptEncoding, ",") {
+		if i := strings.IndexByte(encodeName, ';'); i != -1 {
+			encodeName = encodeName[:i]
+		}
+		encodeName = strings.TrimSpace(encodeName)
+		if encodeName == "" {
 			continue
 		}
+		encodeExt, ok := EncodeNameExtMap[encodeName]
+		if !ok || encodeExt == "" {
+			continue
+		}
+		if encodeExt[0] != '.' {
+			encodeExt = "." + encodeExt
+		}
 
-		f, err := fs.Open(name + encode.ext)
+		f, err := fs.Open(filePath + encodeExt)
 		if err != nil {
 			continue
 		}
-		defer f.Close()
 
 		s, err := f.Stat()
 		if err != nil || s.IsDir() {
 			f.Close()
-			continue
+		} else if minSize == -1 || s.Size() < minSize {
+			if file != nil {
+				file.Close()
+			}
+			file = f
+			minSize = s.Size()
+			minSizeFileModTime = s.ModTime()
+			minSizeFileEncodeName = encodeName
+		} else {
+			f.Close()
 		}
+	}
 
-		h := ctx.Writer.Header()
-		h.Del("Content-Length")
-		h.Set("Content-Encoding", encode.name)
-		h.Set("Content-Type", mime.TypeByExtension(ext))
-		h.Add("Vary", "Accept-Encoding")
-		if EnableDebugHeader {
-			h.Add("Encoding-By", "gzipstatic-gin")
-		}
-
-		http.ServeContent(ctx.Writer, ctx.Request, name, s.ModTime(), f)
+	if minSize == -1 {
+		// Not Found
 		return false
 	}
+
+	wh := ctx.Writer.Header()
+	if EnableDebugHeader {
+		wh.Add("X-Encoding-By", "gzipstatic-gin")
+	}
+	if minSizeFileEncodeName != "" {
+		wh.Set("Content-Encoding", minSizeFileEncodeName)
+		wh.Add("Vary", "Accept-Encoding")
+	}
+
+	http.ServeContent(ctx.Writer, ctx.Request, filePath, minSizeFileModTime, file)
 	return true
 }
 
 func File(ctx *gin.Context, FilePath string) {
 	dir, name := filepath.Split(FilePath)
-	if tryCompress(ctx, name, http.Dir(dir)) {
+	if !serveFile(ctx, name, http.Dir(dir)) {
 		ctx.File(FilePath)
 	}
 }
 
 func FileFromFS(ctx *gin.Context, name string, fs http.FileSystem) {
-	if tryCompress(ctx, name, fs) {
+	if !serveFile(ctx, name, fs) {
 		ctx.FileFromFS(name, fs)
 	}
 }
@@ -131,18 +193,25 @@ func StaticFS(group gin.IRoutes, relativePath string, fs http.FileSystem) gin.IR
 	}
 	handler := func(ctx *gin.Context) {
 		name := ctx.Param("filepath")
-		if !tryCompress(ctx, name, fs) {
+		if serveFile(ctx, name, fs) {
 			return
 		}
-		if NoRoute != nil {
-			f, err := fs.Open(name)
-			if err != nil {
-				ctx.Status(404)
-				NoRoute(ctx)
+		f, err := fs.Open(name)
+		if err != nil {
+			// 404 Not Found
+			ctx.Status(http.StatusNotFound)
+			engineElem, ok := getEngineElem(group)
+			if !ok {
 				return
 			}
-			f.Close()
+			noRoute := (*gin.HandlersChain)(unsafe.Pointer(engineElem.FieldByName("noRoute").UnsafeAddr()))
+			ctxElem := reflect.ValueOf(ctx).Elem()
+			*(*gin.HandlersChain)(unsafe.Pointer(ctxElem.FieldByName("handlers").UnsafeAddr())) = *noRoute
+			*(*int8)(unsafe.Pointer(ctxElem.FieldByName("index").UnsafeAddr())) = -1
+			return
 		}
+		f.Close()
+
 		ctx.FileFromFS(name, fs)
 	}
 	urlPattern := path.Join(relativePath, "/*filepath")

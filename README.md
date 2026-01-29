@@ -1,32 +1,20 @@
 # gzipstatic-gin
 
-使用静态 gzip 或 br 压缩文件响应，减少服务器性能占用。
+自动使用最小的压缩文件响应，减少服务器性能消耗。
 
-Use static gzip or br compression file response to reduce server performance consumption.
+Automatically use the smallest compressed file response to reduce server performance consumption.
 
 ---
 
 ## Get
 
 ```
-go get github.com/bddjr/gzipstatic-gin
+go get -u github.com/bddjr/gzipstatic-gin
 ```
 
 ---
 
 ## Example
-
-### NoRoute
-
-```go
-noRoute := func(ctx *gin.Context) {
-    f, _ := os.ReadFile("frontend/dist/404.html")
-    ctx.Data(404, gin.MIMEHTML, f)
-}
-Router.NoRoute(noRoute)
-
-gzipstatic.NoRoute = noRoute
-```
 
 ### Static
 
@@ -70,55 +58,54 @@ gzipstatic.StaticFileFS(router, "/", "index.html", fs)
 gzipstatic.FileFromFS(ctx, "index.html", fs)
 ```
 
-### ExtFillter
+### ExtFilterMap
 
 ```go
-gzipstatic.ExtFillter = regexp.MustCompile(`\.(html|htm|js|json|css)$`)
+gzipstatic.ExtFilterMap = map[string]struct{}{
+	".css":  {},
+	".htm":  {},
+	".html": {},
+	".js":   {},
+	".json": {},
+	".mjs":  {},
+	".svg":  {},
+	".wasm": {},
+	".xml":  {},
+}
 ```
 
-### EncodeList
+### EncodeNameExtMap
 
 ```go
-// Priority from high to low
-gzipstatic.EncodeList = []*gzipstatic.EncodeListItem{
-    {
-        name: "br",
-        ext:  ".br",
-    }, {
-        name: "gzip",
-        ext:  ".gz",
-    },
+gzipstatic.EncodeNameExtMap = map[string]string{
+	"br":   ".br",
+	"zstd": ".zst",
+	"gzip": ".gz",
 }
 ```
 
 ### EnableDebugHeader
 
 ```go
-// Encoding-By: gzipstatic-gin
+// X-Encoding-By: gzipstatic-gin
 gzipstatic.EnableDebugHeader = true
 ```
 
 ---
 
-## Source Code
+## Test
 
-[gzipstatic.go](gzipstatic.go)
+Dependencies: Git, Go, Node.js
 
----
-
-## Reference
-
-https://developer.mozilla.org/docs/Web/HTTP/Headers/Content-Encoding  
-https://developer.mozilla.org/docs/Web/HTTP/Headers/Accept-Encoding  
-https://developer.mozilla.org/docs/Web/HTTP/Headers/Vary  
-https://github.com/gin-gonic/gin  
-https://github.com/BCSPanel/BCSPanel/blob/main/src/httprouter/init.go  
-https://github.com/lpar/gzipped  
-https://github.com/nanmu42/gzip  
-https://github.com/vbenjs/vite-plugin-compression
-
----
-
-## License
-
-[BSD-3-clause license](LICENSE.txt)
+```
+git clone https://github.com/bddjr/gzipstatic-gin
+cd gzipstatic-gin
+cd testdata
+cd vite-project
+npm i -g pnpm
+pnpm i
+pnpm build
+cd ..
+go build
+./testdata
+```

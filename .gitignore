@@ -1,0 +1,5 @@
+/testdata/main
+/testdata/testdata
+/testdata/*.exe
+.DS_Store
+desktop.ini

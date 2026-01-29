@@ -4,6 +4,8 @@
 
 Automatically use the smallest compressed file response to reduce server performance consumption.
 
+Default encode: gzip, zstd, br
+
 ---
 
 ## Get

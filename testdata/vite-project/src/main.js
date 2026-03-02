@@ -23,4 +23,4 @@ document.querySelector('#app').innerHTML = `
 
 setupCounter(document.querySelector('#counter'))
 
-fetch("/404")
+fetch("./test404")

@@ -1,20 +1,20 @@
 # gzipstatic-gin
 
-自动使用最小的压缩文件响应，减少服务器性能消耗。
+自动使用压缩文件响应，减少服务器性能消耗。
 
-Automatically use the smallest compressed file response to reduce server performance consumption.
+Automatically use compressed file responses, reducing server performance consumption.
 
 Default encode:
-> gzip .gz  
 > br .br  
 > zstd .zst  
+> gzip .gz  
 
 ---
 
 ## Get
 
 ```
-go get -u github.com/bddjr/gzipstatic-gin
+go get -u github.com/bddjr/gzipstatic-gin@latest
 ```
 
 ---
@@ -76,6 +76,9 @@ gzipstatic.ExtFilterMap = map[string]struct{}{
 	".svg":  {},
 	".wasm": {},
 	".xml":  {},
+	".yaml": {},
+	".yml":  {},
+	".toml": {},
 }
 ```
 
@@ -89,28 +92,20 @@ gzipstatic.EncodeNameExtMap = map[string]string{
 }
 ```
 
+### EncodeNamePriority
+
+```go
+// from high to low
+gzipstatic.EncodeNamePriority = []string{
+	"br",
+	"zstd",
+	"gzip",
+}
+```
+
 ### EnableDebugHeader
 
 ```go
 // X-Encoding-By: gzipstatic-gin
 gzipstatic.EnableDebugHeader = true
-```
-
----
-
-## Test
-
-Dependencies: Git, Go, Node.js
-
-```
-git clone https://github.com/bddjr/gzipstatic-gin
-cd gzipstatic-gin
-cd testdata
-cd vite-project
-npm i -g pnpm
-pnpm i
-pnpm build
-cd ..
-go build
-./testdata
 ```

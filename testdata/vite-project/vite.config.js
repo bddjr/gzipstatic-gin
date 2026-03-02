@@ -1,6 +1,5 @@
 import { defineConfig } from "vite";
-import { compression, defineAlgorithm } from 'vite-plugin-compression2'
-import zlib from 'zlib'
+import { compression } from 'vite-plugin-compression2'
 
 export default defineConfig({
     build: {
@@ -10,14 +9,10 @@ export default defineConfig({
     plugins: [
         compression({
             algorithms: [
-                'gzip',
-                'brotliCompress',
-                defineAlgorithm('zstd', {
-                    params: {
-                        [zlib.constants.ZSTD_c_compressionLevel]: 22
-                    }
-                })
-            ]
-        })
+                'gz',
+                'br',
+                'zstd'
+            ],
+        }),
     ]
 })

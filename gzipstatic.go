@@ -7,14 +7,10 @@ import (
 	"path/filepath"
 	"reflect"
 	"strings"
-	"time"
 	"unsafe"
 
 	"github.com/gin-gonic/gin"
 )
-
-// X-Encoding-By: gzipstatic-gin
-var EnableDebugHeader = true
 
 var ExtFilterMap = map[string]struct{}{
 	".css":  {},
@@ -26,6 +22,9 @@ var ExtFilterMap = map[string]struct{}{
 	".svg":  {},
 	".wasm": {},
 	".xml":  {},
+	".yaml": {},
+	".yml":  {},
+	".toml": {},
 }
 
 var EncodeNameExtMap = map[string]string{
@@ -34,16 +33,56 @@ var EncodeNameExtMap = map[string]string{
 	"gzip": ".gz",
 }
 
-func getEngineElem(group gin.IRoutes) (reflect.Value, bool) {
-	if group != nil {
-		if engine, ok := group.(*gin.Engine); ok {
-			return reflect.ValueOf(engine).Elem(), true
-		}
-		if rg, ok := group.(*gin.RouterGroup); ok {
-			return reflect.ValueOf(rg).Elem().FieldByName("engine").Elem(), true
-		}
+// from high to low
+var EncodeNamePriority = []string{
+	"br",
+	"zstd",
+	"gzip",
+}
+
+// X-Encoding-By: gzipstatic-gin
+var EnableDebugHeader = true
+
+var offset_RouterGroup_engine = func() uintptr {
+	sf, ok := reflect.TypeFor[gin.RouterGroup]().FieldByName("engine")
+	if !ok {
+		panic("gzipstatic-gin: cannot get gin.RouterGroup.engine offset")
 	}
-	return reflect.Value{}, false
+	return sf.Offset
+}()
+
+var offset_Engine_noRoute = func() uintptr {
+	sf, ok := reflect.TypeFor[gin.Engine]().FieldByName("noRoute")
+	if !ok {
+		panic("gzipstatic-gin: cannot get gin.Engine.noRoute offset")
+	}
+	return sf.Offset
+}()
+
+var offset_Context_handlers, offset_Context_index = func() (uintptr, uintptr) {
+	t := reflect.TypeFor[gin.Context]()
+	sf_handlers, ok := t.FieldByName("handlers")
+	if !ok {
+		panic("gzipstatic-gin: cannot get gin.Context.handlers offset")
+	}
+	sf_index, ok := t.FieldByName("index")
+	if !ok {
+		panic("gzipstatic-gin: cannot get gin.Context.index offset")
+	}
+	return sf_handlers.Offset, sf_index.Offset
+}()
+
+func getEngineUnsafePointer(group gin.IRoutes) unsafe.Pointer {
+	if group == nil {
+		return nil
+	}
+	if engine, ok := group.(*gin.Engine); ok {
+		return unsafe.Pointer(engine)
+	}
+	if rg, ok := group.(*gin.RouterGroup); ok {
+		return *(*unsafe.Pointer)(unsafe.Add(unsafe.Pointer(rg), offset_RouterGroup_engine))
+	}
+	return nil
 }
 
 // returns ok?
@@ -68,81 +107,48 @@ func serveFile(ctx *gin.Context, filePath string, fs http.FileSystem) bool {
 		return false
 	}
 
-	var file http.File
-	defer func() {
-		if file != nil {
-			file.Close()
+	acceptEncoding := make(map[string]string, len(EncodeNameExtMap))
+
+	for encoding := range strings.SplitSeq(headerAcceptEncoding, ",") {
+		if i := strings.IndexByte(encoding, ';'); i != -1 {
+			encoding = encoding[:i]
 		}
-	}()
-
-	var minSize int64 = -1
-	var minSizeFileModTime time.Time
-	minSizeFileEncodeName := ""
-
-	if f, err := fs.Open(filePath); err == nil {
-		s, err := f.Stat()
-		if err != nil || s.IsDir() {
-			f.Close()
-		} else {
-			file = f
-			minSize = s.Size()
-			minSizeFileModTime = s.ModTime()
+		encoding = strings.TrimSpace(encoding)
+		if encoding == "" {
+			continue
+		}
+		if ext, ok := EncodeNameExtMap[encoding]; ok {
+			acceptEncoding[encoding] = ext
 		}
 	}
 
-	for encodeName := range strings.SplitSeq(headerAcceptEncoding, ",") {
-		if i := strings.IndexByte(encodeName, ';'); i != -1 {
-			encodeName = encodeName[:i]
-		}
-		encodeName = strings.TrimSpace(encodeName)
-		if encodeName == "" {
+	for _, encoding := range EncodeNamePriority {
+		ext, ok := acceptEncoding[encoding]
+		if !ok {
 			continue
-		}
-		encodeExt, ok := EncodeNameExtMap[encodeName]
-		if !ok || encodeExt == "" {
-			continue
-		}
-		if encodeExt[0] != '.' {
-			encodeExt = "." + encodeExt
 		}
 
-		f, err := fs.Open(filePath + encodeExt)
+		file, err := fs.Open(filePath + ext)
 		if err != nil {
 			continue
 		}
+		defer file.Close()
 
-		s, err := f.Stat()
-		if err != nil || s.IsDir() {
-			f.Close()
-		} else if minSize == -1 || s.Size() < minSize {
-			if file != nil {
-				file.Close()
-			}
-			file = f
-			minSize = s.Size()
-			minSizeFileModTime = s.ModTime()
-			minSizeFileEncodeName = encodeName
-		} else {
-			f.Close()
+		stat, err := file.Stat()
+		if err != nil || stat.IsDir() {
+			continue
 		}
-	}
 
-	if minSize == -1 {
-		// Not Found
-		return false
-	}
-
-	wh := ctx.Writer.Header()
-	if EnableDebugHeader {
-		wh.Add("X-Encoding-By", "gzipstatic-gin")
-	}
-	if minSizeFileEncodeName != "" {
-		wh.Set("Content-Encoding", minSizeFileEncodeName)
+		wh := ctx.Writer.Header()
+		if EnableDebugHeader {
+			wh.Add("X-Encoding-By", "gzipstatic-gin")
+		}
+		wh.Set("Content-Encoding", encoding)
 		wh.Add("Vary", "Accept-Encoding")
+		http.ServeContent(ctx.Writer, ctx.Request, filePath, stat.ModTime(), file)
+		return true
 	}
-
-	http.ServeContent(ctx.Writer, ctx.Request, filePath, minSizeFileModTime, file)
-	return true
+	return false
 }
 
 func File(ctx *gin.Context, FilePath string) {
@@ -159,7 +165,7 @@ func FileFromFS(ctx *gin.Context, name string, fs http.FileSystem) {
 }
 
 func staticFileHandler(group gin.IRoutes, relativePath string, handler gin.HandlerFunc) gin.IRoutes {
-	if strings.Contains(relativePath, ":") || strings.Contains(relativePath, "*") {
+	if strings.IndexByte(relativePath, ':') != -1 || strings.IndexByte(relativePath, '*') != -1 {
 		panic("URL parameters can not be used when serving a static file")
 	}
 	group.GET(relativePath, handler)
@@ -183,7 +189,7 @@ func Static(group gin.IRoutes, relativePath, root string) gin.IRoutes {
 }
 
 func StaticFS(group gin.IRoutes, relativePath string, fs http.FileSystem) gin.IRoutes {
-	if strings.Contains(relativePath, ":") || strings.Contains(relativePath, "*") {
+	if strings.IndexByte(relativePath, ':') != -1 || strings.IndexByte(relativePath, '*') != -1 {
 		panic("URL parameters can not be used when serving a static folder")
 	}
 	handler := func(ctx *gin.Context) {
@@ -195,14 +201,19 @@ func StaticFS(group gin.IRoutes, relativePath string, fs http.FileSystem) gin.IR
 		if err != nil {
 			// 404 Not Found
 			ctx.Status(http.StatusNotFound)
-			engineElem, ok := getEngineElem(group)
-			if !ok {
+			// gin.Engine
+			engineUP := getEngineUnsafePointer(group)
+			if engineUP == nil {
 				return
 			}
-			noRoute := (*gin.HandlersChain)(unsafe.Pointer(engineElem.FieldByName("noRoute").UnsafeAddr()))
-			ctxElem := reflect.ValueOf(ctx).Elem()
-			*(*gin.HandlersChain)(unsafe.Pointer(ctxElem.FieldByName("handlers").UnsafeAddr())) = *noRoute
-			*(*int8)(unsafe.Pointer(ctxElem.FieldByName("index").UnsafeAddr())) = -1
+			// gin.Engine.noRoute
+			noRoute := (*gin.HandlersChain)(unsafe.Add(engineUP, offset_Engine_noRoute))
+			// gin.Context
+			ctxUP := unsafe.Pointer(ctx)
+			// gin.Context.handlers
+			*(*gin.HandlersChain)(unsafe.Add(ctxUP, offset_Context_handlers)) = *noRoute
+			// gin.Context.index
+			*(*int8)(unsafe.Add(ctxUP, offset_Context_index)) = -1
 			return
 		}
 		f.Close()

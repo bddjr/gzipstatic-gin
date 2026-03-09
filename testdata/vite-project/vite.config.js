@@ -11,7 +11,7 @@ export default defineConfig({
             algorithms: [
                 'gz',
                 'br',
-                'zstd'
+                // 'zstd'
             ],
         }),
     ]

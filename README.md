@@ -87,7 +87,7 @@ gzipstatic.ExtFilterMap = map[string]struct{}{
 ```go
 gzipstatic.EncodeNameExtMap = map[string]string{
 	"br":   ".br",
-	"zstd": ".zst",
+	// "zstd": ".zst",
 	"gzip": ".gz",
 }
 ```
@@ -98,7 +98,7 @@ gzipstatic.EncodeNameExtMap = map[string]string{
 // from high to low
 gzipstatic.EncodeNamePriority = []string{
 	"br",
-	"zstd",
+	// "zstd",
 	"gzip",
 }
 ```

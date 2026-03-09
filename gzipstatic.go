@@ -28,15 +28,15 @@ var ExtFilterMap = map[string]struct{}{
 }
 
 var EncodeNameExtMap = map[string]string{
-	"br":   ".br",
-	"zstd": ".zst",
+	"br": ".br",
+	// "zstd": ".zst",
 	"gzip": ".gz",
 }
 
 // from high to low
 var EncodeNamePriority = []string{
 	"br",
-	"zstd",
+	// "zstd",
 	"gzip",
 }
 

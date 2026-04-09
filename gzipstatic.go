@@ -46,7 +46,25 @@ var EnableDebugHeader = true
 var offset_RouterGroup_engine = func() uintptr {
 	sf, ok := reflect.TypeFor[gin.RouterGroup]().FieldByName("engine")
 	if !ok {
-		panic("gzipstatic-gin: cannot get gin.RouterGroup.engine offset")
+		panic("gzipstatic-gin: failed to get offset of gin.RouterGroup.engine")
+	}
+	const errmsg = "gzipstatic-gin: failed to check type of gin.RouterGroup.engine"
+	if sf.Type.Kind() != reflect.Pointer {
+		panic(errmsg)
+	}
+	b := reflect.TypeFor[gin.Engine]()
+	sfte := sf.Type.Elem()
+	if sfte.Kind() != b.Kind() {
+		panic(errmsg)
+	}
+	if sfte.Size() != b.Size() {
+		panic(errmsg)
+	}
+	if sfte.PkgPath() != b.PkgPath() {
+		panic(errmsg)
+	}
+	if sfte.Name() != b.Name() {
+		panic(errmsg)
 	}
 	return sf.Offset
 }()
@@ -54,22 +72,62 @@ var offset_RouterGroup_engine = func() uintptr {
 var offset_Engine_noRoute = func() uintptr {
 	sf, ok := reflect.TypeFor[gin.Engine]().FieldByName("noRoute")
 	if !ok {
-		panic("gzipstatic-gin: cannot get gin.Engine.noRoute offset")
+		panic("gzipstatic-gin: failed to get offset of gin.Engine.noRoute")
+	}
+	const errmsg = "gzipstatic-gin: failed to check type of gin.Engine.noRoute"
+	b := reflect.TypeFor[gin.HandlersChain]()
+	if sf.Type.Kind() != b.Kind() {
+		panic(errmsg)
+	}
+	if sf.Type.Size() != b.Size() {
+		panic(errmsg)
+	}
+	if sf.Type.PkgPath() != b.PkgPath() {
+		panic(errmsg)
+	}
+	if sf.Type.Name() != b.Name() {
+		panic(errmsg)
 	}
 	return sf.Offset
 }()
 
-var offset_Context_handlers, offset_Context_index = func() (uintptr, uintptr) {
+var offset_Context_handlers, offset_Context_index = func() (offset_handlers uintptr, offset_index uintptr) {
 	t := reflect.TypeFor[gin.Context]()
-	sf_handlers, ok := t.FieldByName("handlers")
-	if !ok {
-		panic("gzipstatic-gin: cannot get gin.Context.handlers offset")
+
+	{
+		sf, ok := t.FieldByName("handlers")
+		if !ok {
+			panic("gzipstatic-gin: failed to get offset of gin.Context.handlers")
+		}
+		const errmsg = "gzipstatic-gin: failed to check type of gin.Context.handlers"
+		b := reflect.TypeFor[gin.HandlersChain]()
+		if sf.Type.Kind() != b.Kind() {
+			panic(errmsg)
+		}
+		if sf.Type.Size() != b.Size() {
+			panic(errmsg)
+		}
+		if sf.Type.PkgPath() != b.PkgPath() {
+			panic(errmsg)
+		}
+		if sf.Type.Name() != b.Name() {
+			panic(errmsg)
+		}
+		offset_handlers = sf.Offset
 	}
-	sf_index, ok := t.FieldByName("index")
-	if !ok {
-		panic("gzipstatic-gin: cannot get gin.Context.index offset")
+
+	{
+		sf, ok := t.FieldByName("index")
+		if !ok {
+			panic("gzipstatic-gin: failed to get offset of gin.Context.index")
+		}
+		if sf.Type.Kind() != reflect.Int8 {
+			panic("gzipstatic-gin: failed to check type of gin.Context.index")
+		}
+		offset_index = sf.Offset
 	}
-	return sf_handlers.Offset, sf_index.Offset
+
+	return
 }()
 
 func getEngineUnsafePointer(group gin.IRoutes) unsafe.Pointer {
